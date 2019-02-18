@@ -49,7 +49,7 @@ class KMeans_and_Cluster:
             ind1, ind2 = ind2, ind1
         return self.pdist_array[int((self.n-1)*ind1-ind1*(ind1-1)/2+ind2-ind1-1)]
 
-    def prefilter(self, dist):
+    def prefilter(self,dist):
         # un-include any points that are more than a distance of dist away
         # from all other points in the set
         # overwrites any previous prefiltering
@@ -57,10 +57,22 @@ class KMeans_and_Cluster:
         self.filter_radius = dist
         self.points['include'] = True
         if not self.min_distance_calc:
-            for i in range(self.n):
-                self.points.at[i, 'min_distance'] = min(self.ut_distance(i,j) for j in range(self.n) if j != i)
-            self.min_distance_calc = True
+            dist_dict = {i:np.inf for i in range(self.n)}
+            col_counter = 1
+            row_counter = 0
+            for d in self.pdist_array:
+                if d < dist_dict[col_counter]:
+                    dist_dict[col_counter] = d
+                if d < dist_dict[row_counter]:
+                    dist_dict[row_counter] = d
+                if col_counter == self.n-1:
+                    col_counter = row_counter+2
+                    row_counter += 1
+                else:
+                    col_counter += 1
+            self.points['min_distance'] = [value for (key,value) in sorted(dist_dict.items())]
         self.points.loc[(self.points.min_distance > self.filter_radius), 'include'] = False
+
 
     def chunkify(self, k_chunks):
         # do the k-means clustering, then compute pairwise intercluster distances
