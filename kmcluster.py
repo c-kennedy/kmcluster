@@ -10,14 +10,10 @@ pd.set_option('max_columns',12)
 pd.set_option('max_colwidth',15)
 
 # To-Do List:
-# * Add option in prefiltering for doing a prefilter just for that distance,
-# meaning we don't actually fill in the column 'min_distance' (just go through
-# the pdist array number by number, checking off points when they qualify)
 # * Add method for automatically showing a scatterplot with appropriate parameters
 # (with a few built-in palettes to choose from if you're lazy)
 
-
-
+df = pd.read_csv('..\\nytaxi\\test.csv')
 
 class KMeans_and_Cluster:
     # structure for breaking a set of points into chunks using k-means, then
@@ -27,8 +23,9 @@ class KMeans_and_Cluster:
     def __init__(self, points, **kwargs):
         # points: a DF in which the first column is the x-coord and second column is y-coord
         # can have other columns (so long as their names don't overlap with ones defined here),
-        # they'll just be carried along and ignored
+        # they'll just be carried along and ignored, and won't be returned by clusterify in the end
         self.points = points.rename(columns={points.columns[0]:'x', points.columns[1]:'y'})
+        self.points.reset_index(inplace=True)
         self.points['chunk'] = np.nan
         self.points['cluster'] = np.nan
         self.points['min_distance'] = np.nan
@@ -47,7 +44,10 @@ class KMeans_and_Cluster:
             return 0
         if ind1 > ind2:
             ind1, ind2 = ind2, ind1
-        return self.pdist_array[int((self.n-1)*ind1-ind1*(ind1-1)/2+ind2-ind1-1)]
+        try:
+            return self.pdist_array[int((self.n-1)*ind1-ind1*(ind1-1)/2+ind2-ind1-1)]
+        except:
+            print(ind1, ind2)
 
     def prefilter(self,dist):
         # un-include any points that are more than a distance of dist away
@@ -73,18 +73,18 @@ class KMeans_and_Cluster:
             self.points['min_distance'] = [value for (key,value) in sorted(dist_dict.items())]
         self.points.loc[(self.points.min_distance > self.filter_radius), 'include'] = False
 
-
-    def chunkify(self, k_chunks):
+    def chunkify(self, k_chunks, random_state=None):
         # do the k-means clustering, then compute pairwise intercluster distances
         # note that this will overwrite any earlier k-chunk attempt
         self.k_chunks = k_chunks
         included_points = self.points.loc[self.points.include]
-        ks = KMeans(n_clusters=k_chunks).fit(np.array(included_points[['x','y']])).labels_
+        ks = KMeans(n_clusters=k_chunks, random_state=random_state).fit(np.array(included_points[['x','y']])).labels_
         self.points.loc[self.points.include,'chunk'] = ks
         self.points.loc[self.points.include,'cluster'] = ks
         self.chunk_dict = {t:included_points.loc[self.points.chunk==t].index
                            for t in range(k_chunks)}
         self.cluster_distances = dict()
+        # speedup: do the same trick here as in prefilter (go through pdist once)
         for j in range(k_chunks):
             for i in range(j):
                 i_index, j_index = self.chunk_dict[i], self.chunk_dict[j]
@@ -119,6 +119,9 @@ class KMeans_and_Cluster:
     def clusterify(self, final_clusters):
         # do single-link clustering on the k-chunks until there are n=final_clusters of them
         # return the original (x,y)-coordinates labeled with their clusters
+        # will overwrite previous clustering, if there was one
+        self.points.cluster = self.points.chunk
+        self.all_clusters = set(range(self.k_chunks))
         if final_clusters > self.k_chunks:
             raise ValueError('Must have at least as many chunks as clusters.')
         self.num_clusters = final_clusters
@@ -130,17 +133,25 @@ class KMeans_and_Cluster:
                 self.condense(c1,c2)
         return self.points.loc[self.points.include][['x','y','cluster']]
 
+    def auto_clusterify(self):
+        # will eventually fold this in as an option for clusterify
+        # idea is to continue clustering until you're left with "a few" "big" clusters
+        # need to actually figure out what that means, obviously
+        pass
+
     def chunk_and_clusterify(self, k_chunks, final_clusters):
         self.chunkify(k_chunks)
         self.clusterify(final_clusters)
 
-    def scatter_plot(self, size=0.1, hue='cluster', palette='auto'):
+    def scatter_plot(self, size=0.1, hue='cluster'):
         if hue not in ['cluster','chunk','include']:
             raise ValueError("hue must be 'cluster', 'chunk', or 'include'.")
-        if palette == 'auto':
-            pass
-            #figure out what to do
-        included_points = self.points.loc[self.points.include]
-        return sns.scatterplot(x=included_points.x, y=included_points.y, hue=included_points[hue], size=size)
+        if hue != 'include':
+            self.points[hue+'_cat'] = self.points[hue].astype('str')+'a'
+            included_points = self.points.loc[self.points.include]
+            hue = hue+'_cat'
+        else:
+            included_points = self.points
+        return sns.scatterplot(x=included_points.x, y=included_points.y, hue=included_points[hue], legend=None, size=size)
 
 
