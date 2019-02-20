@@ -1,19 +1,12 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 import math
 import numpy as np
 from scipy.spatial.distance import pdist
 from sklearn.cluster import KMeans
 pd.options.mode.chained_assignment = None
-pd.set_option('max_columns',12)
+pd.set_option('max_columns',6)
 pd.set_option('max_colwidth',15)
-
-# To-Do List:
-# * Add method for automatically showing a scatterplot with appropriate parameters
-# (with a few built-in palettes to choose from if you're lazy)
-
-df = pd.read_csv('..\\nytaxi\\test.csv')
 
 class KMeans_and_Cluster:
     # structure for breaking a set of points into chunks using k-means, then
@@ -21,10 +14,10 @@ class KMeans_and_Cluster:
     # throughout, CHUNK means one of the original k-means groups, while
     # CLUSTER means one of the intermediate or final larger groupings
     def __init__(self, points, **kwargs):
-        # points: a DF in which the first column is the x-coord and second column is y-coord
-        # can have other columns (so long as their names don't overlap with ones defined here),
-        # they'll just be carried along and ignored, and won't be returned by clusterify in the end
-        self.points = points.rename(columns={points.columns[0]:'x', points.columns[1]:'y'})
+        # points: an n x 2 numpy array in which the first column is the x-coord and second column is y-coord
+        if points.shape[1] != 2:
+            raise TypeError('points must be of shape (n,2)')
+        self.points = pd.DataFrame(points, columns=['x','y'])
         self.points.reset_index(inplace=True)
         self.points['chunk'] = np.nan
         self.points['cluster'] = np.nan
@@ -83,13 +76,13 @@ class KMeans_and_Cluster:
         self.points.loc[self.points.include,'cluster'] = ks
         self.chunk_dict = {t:included_points.loc[self.points.chunk==t].index
                            for t in range(k_chunks)}
-        self.cluster_distances = dict()
+        self.chunk_distances = dict()
         # speedup: do the same trick here as in prefilter (go through pdist once)
         for j in range(k_chunks):
             for i in range(j):
                 i_index, j_index = self.chunk_dict[i], self.chunk_dict[j]
                 M = min(self.ut_distance(s,t) for s in i_index for t in j_index)
-                self.cluster_distances[i,j] = M
+                self.chunk_distances[i,j] = M
         self.all_clusters = set(range(k_chunks))
 
     def condense(self, c1, c2):
@@ -120,10 +113,11 @@ class KMeans_and_Cluster:
         # do single-link clustering on the k-chunks until there are n=final_clusters of them
         # return the original (x,y)-coordinates labeled with their clusters
         # will overwrite previous clustering, if there was one
-        self.points.cluster = self.points.chunk
-        self.all_clusters = set(range(self.k_chunks))
         if final_clusters > self.k_chunks:
             raise ValueError('Must have at least as many chunks as clusters.')
+        self.points.cluster = self.points.chunk
+        self.all_clusters = set(range(self.k_chunks))
+        self.cluster_distances = self.chunk_distances.copy()
         self.num_clusters = final_clusters
         while len(self.all_clusters) > self.num_clusters:
             pairs_to_use = [key for (key,value) in self.cluster_distances.items()
@@ -152,6 +146,5 @@ class KMeans_and_Cluster:
             hue = hue+'_cat'
         else:
             included_points = self.points
-        return sns.scatterplot(x=included_points.x, y=included_points.y, hue=included_points[hue], legend=None, size=size)
-
+        return plt.scatter(x=included_points.x, y=included_points.y, c=included_points[hue], s=size)
 
