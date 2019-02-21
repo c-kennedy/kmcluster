@@ -9,7 +9,7 @@ Contents
 Ideally, this repository contains the following:
 
 * **kmcluster.py**, which contains all the necessary code.
-* **demo.ipynb**, which demonstrates all the useful features.
+* **Demo.ipynb**, which demonstrates all the useful features.
 * **documentation** of some kind.
 
-Right now, it probably only has the code. Working on the other stuff!
+Right now, there is no detailed documentation (outside of some explanatory comments in the code), but the Demo should make the code usable.
