@@ -84,7 +84,7 @@ class KMeans_and_Cluster:
             self.points['min_distance'] = [value for (key,value) in sorted(dist_dict.items())]
         self.points.loc[(self.points.min_distance > self.filter_radius), 'include'] = False
 
-    def chunkify(self, k_chunks, output=None, random_state=None):
+    def chunkify(self, k_chunks, output=None, verbose=False, random_state=None):
         # do the k-means clustering, then compute pairwise intercluster distances
         # note that this will overwrite any earlier k-chunk attempt
         if output not in ['dataframe','arrays',None]:
@@ -92,17 +92,24 @@ class KMeans_and_Cluster:
         self.k_chunks = k_chunks
         included_points = self.points.loc[self.points.include]
         ks = KMeans(n_clusters=k_chunks, random_state=random_state).fit(np.array(included_points[['x','y']])).labels_
+        if verbose:
+            print('K-Means clustering complete.')
         self.points.loc[self.points.include,'chunk'] = ks
         self.points.loc[self.points.include,'cluster'] = ks
         self.chunk_dict = {t:included_points.loc[self.points.chunk==t].index
                            for t in range(k_chunks)}
         self.chunk_distances = dict()
         # speedup: do the same trick here as in prefilter (go through pdist once)
+        distances_done = 0
+        total_distances = int(k_chunks*(k_chunks-1)/2)
         for j in range(k_chunks):
             for i in range(j):
                 i_index, j_index = self.chunk_dict[i], self.chunk_dict[j]
                 M = min(self.ut_distance(s,t) for s in i_index for t in j_index)
                 self.chunk_distances[i,j] = M
+                distances_done += 1
+                if distances_done % 100 == 0 and verbose:
+                    print('Computed %d of %d distances.' % (distances_done, total_distances))
         self.all_clusters = set(range(k_chunks))
         if output == 'dataframe':
             return self.points.loc[self.points.include][['x','y','chunk']]
@@ -135,7 +142,7 @@ class KMeans_and_Cluster:
                 del self.cluster_distances[c2,c]
         del self.cluster_distances[c1,c2]
 
-    def clusterify(self, final_clusters, output='dataframe'):
+    def clusterify(self, final_clusters, output='dataframe', verbose=False):
         # do single-link clustering on the k-chunks until there are n=final_clusters of them
         # return the original (x,y)-coordinates labeled with their clusters
         # will overwrite previous clustering, if there was one
@@ -154,6 +161,9 @@ class KMeans_and_Cluster:
                             if value==min(self.cluster_distances.values())]
             pairs_to_use.sort(key=lambda pair: (-pair[1],-pair[0]))
             for (c1,c2) in pairs_to_use:
+                if verbose:
+                    print('Condensed clusters %d and %d at distance %.4f' %
+                          (int(c1),int(c2),self.cluster_distances[c1,c2]))
                 self.condense(c1,c2)
         if output == 'dataframe':
             return self.points.loc[self.points.include][['x','y','cluster']]
@@ -172,7 +182,7 @@ class KMeans_and_Cluster:
         self.chunkify(k_chunks)
         self.clusterify(final_clusters)
 
-    def scatter_plot(self, size=0.1, hue='cluster'):
+    def scatter_plot(self, size=0.1, hue='cluster', no_legend=True):
         if hue not in ['cluster','chunk','include']:
             raise ValueError("hue must be 'cluster', 'chunk', or 'include'.")
         if hue != 'include':
@@ -181,6 +191,10 @@ class KMeans_and_Cluster:
             hue = hue+'_cat'
         else:
             included_points = self.points
-        return sns.scatterplot(x=included_points.x, y=included_points.y,
+        if no_legend:
+            return sns.scatterplot(x=included_points.x, y=included_points.y,
                                hue=included_points[hue], size=size, legend=None)
+        else:
+            return sns.scatterplot(x=included_points.x, y=included_points.y,
+                               hue=included_points[hue], size=size)
 
