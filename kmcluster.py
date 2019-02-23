@@ -167,11 +167,13 @@ class KMeans_and_Cluster:
             raise ValueError("output must be 'dataframe', 'arrays', or None.")
         self.k_chunks = k_chunks
         included_points = self.points.loc[self.points.include]
-        ks = KMeans(n_clusters=k_chunks, random_state=random_state).fit(np.array(included_points[['x','y']])).labels_
+        K = KMeans(n_clusters=k_chunks, random_state=random_state).fit(np.array(included_points[['x','y']]))
+        k_labels = K.labels_
+        self.chunk_centers = K.cluster_centers_
         if verbose:
             print('K-Means clustering complete.')
-        self.points.loc[self.points.include,'chunk'] = ks
-        self.points.loc[self.points.include,'cluster'] = ks
+        self.points.loc[self.points.include,'chunk'] = k_labels
+        self.points.loc[self.points.include,'cluster'] = k_labels
         self.chunk_dict = {t:included_points.loc[self.points.chunk==t].index
                            for t in range(k_chunks)}
         self.chunk_distances = dict()
@@ -257,7 +259,9 @@ class KMeans_and_Cluster:
         self.chunkify(k_chunks)
         self.clusterify(final_clusters)
 
-    def scatter_plot(self, size=0.1, hue='cluster', no_legend=True):
+    def scatter_plot(self, size=0.1, hue='cluster', legend=True, text=False):
+        # text: will print chunk numbers over the centroids, if available
+        # not very pretty, but useful
         if hue not in ['cluster','chunk','include']:
             raise ValueError("hue must be 'cluster', 'chunk', or 'include'.")
         if hue != 'include':
@@ -266,10 +270,21 @@ class KMeans_and_Cluster:
             hue = hue+'_cat'
         else:
             included_points = self.points
-        if no_legend:
-            return sns.scatterplot(x=included_points.x, y=included_points.y,
-                               hue=included_points[hue], size=size, legend=None)
-        else:
-            return sns.scatterplot(x=included_points.x, y=included_points.y,
+        if legend:
+            fig = sns.scatterplot(x=included_points.x, y=included_points.y,
                                hue=included_points[hue], size=size)
+            for i in range(self.k_chunks):
+                center = self.chunk_centers[i]
+                plt.text(center[0],center[1],str(i))
+            if __name__=='main':
+                plt.subplots_adjust(right=0.8)
+            return fig
+        else:
+            fig = sns.scatterplot(x=included_points.x, y=included_points.y,
+                               hue=included_points[hue], size=size, legend=None)
+            plt.legend(bbox_to_anchor=(1,1))
+            for i in range(self.k_chunks):
+                center = self.chunk_centers[i]
+                plt.text(center[0],center[1],str(i))
+            return fig
 
