@@ -11,14 +11,90 @@ pd.set_option('max_colwidth',15)
 
 # To patch:
 # * Make scatter_plot able to place a legend in a good way
+# Bigger project(s):
+# * Store graph of chunks/clusters so that it can be 4/5-colored by
+# seaborn when plotting (i.e., won't need 35 colors to see chunks)
 
 class KMeans_and_Cluster:
-    # structure for breaking a set of points into chunks using k-means, then
-    # recombining them by single-link clustering into a smaller number of clusters
+    """
+    Structure for breaking a set of points into chunks using k-means,
+    then recombining them by single-link clustering into a smaller
+    number of clusters.
+
+    Attributes
+    ----------
+    points : pd.DataFrame
+        DataFrame with all the data and chunk/cluster assignments, as
+        well as minimum distance to other points and whether point is
+        included after prefiltering
+    filter_radius : float
+        If not NaN, maximum distance a point may be from all other points
+        before it is excluded from chunking
+    k_chunks : int
+        Number of chunks that KMeans will break the data into
+    num_clusters : int
+        Number of clusters that the chunks will be aggregated into
+    n : int
+        Number of points (including filtered)
+    pdist_array : np.array
+        numpy array of shape (1,n*(n-1)/2) holding pairwise distances
+        between points
+    min_distance_calc : bool
+        Tracks whether min_distances have been calculated yet
+    chunk_dict : dict
+        Dictionary with items (chunk number, list [indez] of point
+        indices in that chunk)
+    chunk_distances : dict
+        Dictionary with items (pair of chunks (c1,c2), single-linkage
+        distance between c1 and c2); always have c1 < c2
+    all_clusters : set
+        Set containing all current clusters (i.e., those that have not
+        been agglomerated into others by clusterify)
+
+    Methods
+    -------
+    get_points(*args, output='dataframe')
+        Returns an array or DataFrame of the data points, along with any
+        assignment columns requested
+    ut_distance(ind1, ind2)
+        Returns distance between points with indices ind1 and ind2, as
+        stored in pdist_array
+    prefilter(dist)
+        Changes points.include to False for any point at least dist away
+        from all other points in the dataset
+    chunkify(k_chunks, output=None, verbose=False, random_state=None)
+        Performs k-means clustering on all included points, resulting in
+        k_chunks different chunks
+    condense(c1, c2)
+        Agglomerates clusters c1 and c2 so that all points in c1 and c2
+        are labeled as c1
+    clusterify(final_clusters, output='dataframe', verbose=False)
+        Recombines chunks into final_clusters many clusters, according
+        to the distances in chunk_distances
+    chunk_and_clusterify(k_chunks, final_clusters)
+        Calls chunkify(k_chunks) and then clusterify(final_clusters)
+    scatter_plot(size=0.1, hue='cluster', no_legend=True)
+        Makes seaborn scatterplot of the data points, labeled according
+        to one assignment column
+    """
+
     # throughout, CHUNK means one of the original k-means groups, while
     # CLUSTER means one of the intermediate or final larger groupings
-    def __init__(self, points, **kwargs):
-        # points: an n x 2 numpy array in which the first column is the x-coord and second column is y-coord
+    def __init__(self, points, prefilter=np.inf):
+        """
+        Parameters
+        ----------
+        points : np.array
+            An (n,2) numpy array of data points
+        prefilter : optional, default infinity
+            If finite, distance to pass to prefilter()
+
+        Raises
+        ------
+        TypeError
+            If points is not a numpy array of shape (n,2)
+        """
+
         if points.shape[1] != 2:
             raise TypeError('points must be of shape (n,2)')
         self.points = pd.DataFrame(points, columns=['x','y'])
@@ -33,8 +109,8 @@ class KMeans_and_Cluster:
         self.n = len(self.points)
         self.pdist_array = pdist(np.array(self.points[['x','y']]))
         self.min_distance_calc = False
-        if 'prefilter' in kwargs:
-            self.prefilter(kwargs['prefilter'])
+        if prefilter != np.inf:
+            self.prefilter(prefilter)
 
     def get_points(self, *args, output='dataframe'):
         # returns x and y columns of self.points, with any add'l columns requested
@@ -99,7 +175,6 @@ class KMeans_and_Cluster:
         self.chunk_dict = {t:included_points.loc[self.points.chunk==t].index
                            for t in range(k_chunks)}
         self.chunk_distances = dict()
-        # speedup: do the same trick here as in prefilter (go through pdist once)
         distances_done = 0
         total_distances = int(k_chunks*(k_chunks-1)/2)
         for j in range(k_chunks):
