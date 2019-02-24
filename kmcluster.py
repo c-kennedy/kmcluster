@@ -36,7 +36,7 @@ class KMeans_and_Cluster:
         Number of clusters that the chunks will be aggregated into
     n : int
         Number of points (including filtered)
-    pdist_array : np.array
+    pdist_array : ndarray
         numpy array of shape (1,n*(n-1)/2) holding pairwise distances
         between points
     min_distance_calc : bool
@@ -84,9 +84,9 @@ class KMeans_and_Cluster:
         """
         Parameters
         ----------
-        points : np.array
+        points : ndarray
             An (n,2) numpy array of data points
-        prefilter : optional, default infinity
+        prefilter : int, optional (default infinity)
             If finite, distance to pass to prefilter()
 
         Raises
@@ -113,8 +113,28 @@ class KMeans_and_Cluster:
             self.prefilter(prefilter)
 
     def get_points(self, *args, output='dataframe'):
-        # returns x and y columns of self.points, with any add'l columns requested
-        # via args
+        """
+        Returns an array or DataFrame of the data points, along with any
+        assignment columns requested.
+
+        Parameters
+        ----------
+        *args : tuple of str
+            Each string is the name of a column to be returned; columns
+            available are 'include', 'chunk', 'cluster', 'min_distance'
+        output : str, optional (default 'dataframe')
+            Format of the output--can be pandas DataFrame (in which case
+            it's got columns x, y, and one for each arg) or numpy arrays
+            (returns a tuple of ndarrays: one of xy-coordinates, and one
+            for each arg)
+
+        Raises
+        ------
+        ValueError
+            If output is not 'dataframe' or 'arrays', or if args contains
+            any element other than those available
+        """
+
         if output not in ['dataframe','arrays']:
             raise ValueError("output must be 'dataframe' or 'arrays'.")
         diff = set(args).difference({'include','chunk','cluster','min_distance'})
@@ -127,6 +147,23 @@ class KMeans_and_Cluster:
                     *(np.array(self.points[arg]) for arg in args))
     
     def ut_distance(self, ind1, ind2):
+        """
+        Returns distance between points with indices ind1 and ind2, as
+        stored in pdist_array
+
+        Parameters
+        ----------
+        ind1, ind2 : int
+            Indices of points to find distance for
+
+        Raises
+        ------
+        ValueError
+            If either index is out of range
+        """    
+
+        if ind1 not in range(self.n) or ind2 not in range(self.n):
+            raise ValueError('Indices must be between 0 and %d inclusive.' % (self.n))
         if ind1==ind2:
             return 0
         if ind1 > ind2:
@@ -219,7 +256,7 @@ class KMeans_and_Cluster:
                 del self.cluster_distances[c2,c]
         del self.cluster_distances[c1,c2]
 
-    def clusterify(self, final_clusters, output='dataframe', verbose=False):
+    def clusterify(self, final_clusters, output=None, verbose=False):
         # do single-link clustering on the k-chunks until there are n=final_clusters of them
         # return the original (x,y)-coordinates labeled with their clusters
         # will overwrite previous clustering, if there was one
@@ -254,6 +291,23 @@ class KMeans_and_Cluster:
         # probably based on condensing up through kth percentile of available distances
         # as measured by chunk_distances.values()
         pass
+
+    def manual_clusterify(self, *args):
+        # pick your own chunks/clusters to agglomerate into clusters
+        # args: as many iterables as desired; each arg will be condensed into one cluster
+        # lists cannot overlap (you must be building disjoint clusters)
+        # therefore, order of args and within each arg is irrelevant
+        # however: does respect any clustering that's already happened!
+        these_clusters = sum(args, [])
+        these_clusters_set = set(these_clusters)
+        if len(these_clusters) != len(these_clusters_set):
+            raise ValueError('Cannot agglomerate same cluster twice.')
+        if these_clusters_set.difference(self.all_clusters) != set():
+            raise ValueError('Cannot use non-existent or already-agglomerated cluster.')
+        for arg in args:
+            arg.sort()
+            for cluster in arg[1:]:
+                self.condense(arg[0], cluster)
 
     def chunk_and_clusterify(self, k_chunks, final_clusters):
         self.chunkify(k_chunks)
